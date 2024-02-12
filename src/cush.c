@@ -24,6 +24,7 @@
 #include <spawn.h>
 
 static void handle_child_status(pid_t pid, int status);
+static struct job *get_job_from_pid(pid_t pid);
 
 static void
 usage(char *progname)
@@ -61,6 +62,7 @@ struct job {
                                         stopped after having been in foreground */
 
     /* Add additional fields here if needed. */
+    pid_t pid;  /* Process id of the job */
 };
 
 /* Utility functions for job list management.
@@ -253,7 +255,58 @@ handle_child_status(pid_t pid, int status)
      *         num_processes_alive if appropriate.
      *         If a process was stopped, save the terminal state.
      */
+    
+    struct job *job = get_job_from_pid(pid);
+    if (WIFEXITED(status)) 
+    {
+        printf("Process %d exited with status %d\n", pid, WEXITSTATUS(status));
+        job->num_processes_alive--;
+    } 
+    else if (WIFSIGNALED(status)) 
+    {
+        printf("Process %d terminated by signal %d\n", pid, WTERMSIG(status));
+        job->num_processes_alive--;
+    } 
+    else if (WIFSTOPPED(status)) 
+    {
+        if (WSTOPSIG(status) == SIGTSTP)
+        {
+            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            job->status = STOPPED;
+        }
+        if (WSTOPSIG(status) == SIGSTOP)
+        {
+            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            job->status = STOPPED;
+        }
+        if (WSTOPSIG(status) == SIGTTOU || WSTOPSIG(status) == SIGTTIN)
+        {
+            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            job->status = NEEDSTERMINAL;
+        }
+    }
+
+    if (job -> num_processes_alive == 0)
+    {
+        list_remove(&job->elem);
+        delete_job(job);
+    }
 }
+
+// Utility function to find job based on pid
+static struct job *get_job_from_pid(pid_t pid) {
+
+    for (struct list_elem *e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e)) 
+    {
+        struct job *job = list_entry(e, struct job, elem);
+        if (job->pid == pid) 
+        {
+            return job;
+        }
+    }
+    return NULL;
+}
+
 
 int
 main(int ac, char *av[])
