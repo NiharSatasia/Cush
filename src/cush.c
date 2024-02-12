@@ -21,6 +21,7 @@
 #include "signal_support.h"
 #include "shell-ast.h"
 #include "utils.h"
+#include <spawn.h>
 
 static void handle_child_status(pid_t pid, int status);
 
@@ -252,7 +253,6 @@ handle_child_status(pid_t pid, int status)
      *         num_processes_alive if appropriate.
      *         If a process was stopped, save the terminal state.
      */
-
 }
 
 int
@@ -301,13 +301,31 @@ main(int ac, char *av[])
             break;
 
         struct ast_command_line * cline = ast_parse_command_line(cmdline);
-        free (cmdline);
         if (cline == NULL)                  /* Error in command line */
             continue;
 
         if (list_empty(&cline->pipes)) {    /* User hit enter */
             ast_command_line_free(cline);
             continue;
+        }
+
+        // Handling single command
+        struct list_elem *e = list_begin(&cline->pipes);
+        struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
+        e = list_begin(&pipe->commands);
+        // Ensure there is at least one command
+        if (e != list_end(&pipe->commands)) {
+            struct ast_command *cmd = list_entry(e, struct ast_command, elem);
+            pid_t pid;
+            printf("Executing command: %s\n", cmd->argv[0]);
+            if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0) {
+                perror("spawn failed");
+            } else {
+                printf("Command executed successfully, PID: %d\n", pid);
+                int status;
+                // Wait for the command to finish
+                waitpid(pid, &status, 0);
+            }
         }
 
         ast_command_line_print(cline);      /* Output a representation of
