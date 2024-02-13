@@ -65,6 +65,12 @@ struct job {
     pid_t pid;  /* Process id of the job */
 };
 
+// Struct for jobs that contain multiple processes
+struct pid_mult {
+    pid_t pid2;
+    struct list_elem mult_elem;
+};
+
 /* Utility functions for job list management.
  * We use 2 data structures: 
  * (a) an array jid2job to quickly find a job based on its id
@@ -256,32 +262,46 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
     
+    // Updated to save terminal states when needed
     struct job *job = get_job_from_pid(pid);
     if (WIFEXITED(status)) 
     {
-        printf("Process %d exited with status %d\n", pid, WEXITSTATUS(status));
+        fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
+        if (job->status == FOREGROUND)
+        {
+            // Sample the current terminal state because a foreground process exited
+            termstate_sample();
+        }
     } 
+    // ^C
     else if (WIFSIGNALED(status)) 
     {
-        printf("Process %d terminated by signal %d\n", pid, WTERMSIG(status));
+        fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
     } 
     else if (WIFSTOPPED(status)) 
     {
+        // ^Z
         if (WSTOPSIG(status) == SIGTSTP)
         {
-            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
+            // Save the terminal state because a process was stopped
+            termstate_save(&job->saved_tty_state);
+            // print job that was stopped
+            print_job(job);
             job->status = STOPPED;
         }
         if (WSTOPSIG(status) == SIGSTOP)
         {
-            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
+            // Save the terminal state because a process was stopped
+            termstate_save(&job->saved_tty_state);
             job->status = STOPPED;
         }
         if (WSTOPSIG(status) == SIGTTOU || WSTOPSIG(status) == SIGTTIN)
         {
-            printf("Process %d terminated by signal %d\n", pid, WSTOPSIG(status));
+            fprintf(stderr, "Process %d needs terminal to continue (stopped by signal: %s)\n", pid, strsignal(WSTOPSIG(status)));
             job->status = NEEDSTERMINAL;
         }
     }
@@ -293,15 +313,22 @@ handle_child_status(pid_t pid, int status)
     }
 }
 
-// Utility function to find job based on pid
+// Utility function to find job based on pid, updated to handle jobs with multiple processes
 static struct job *get_job_from_pid(pid_t pid) {
-
+    // Iterarte through job list
     for (struct list_elem *e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e)) 
     {
-        struct job *job = list_entry(e, struct job, elem);
-        if (job->pid == pid) 
+        struct job *current_job = list_entry(e, struct job, elem);
+        struct list_elem *e2;
+        // Iterate through processes associated with the current job
+        for (e2 = list_begin(&current_job->pipe->commands); e2 != list_end(&current_job->pipe->commands); e2 = list_next(e2)) 
         {
-            return job;
+            struct pid_mult *current_pid = list_entry(e2, struct pid_mult, mult_elem);
+            // Check if the current process's pid matches the given pid
+            if (current_pid->pid2 == pid) 
+            {
+                return current_job;
+            }
         }
     }
     return NULL;
