@@ -394,6 +394,7 @@ int main(int ac, char *av[])
             break;
 
         struct ast_command_line *cline = ast_parse_command_line(cmdline);
+        free(cmdline);
         if (cline == NULL) /* Error in command line */
             continue;
 
