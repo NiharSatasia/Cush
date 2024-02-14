@@ -333,7 +333,7 @@ static struct job *get_job_from_pid(pid_t pid)
         struct job *current_job = list_entry(e, struct job, elem);
         struct list_elem *e2;
         // Iterate through processes associated with the current job
-        for (e2 = list_begin(&current_job->pipe->commands); e2 != list_end(&current_job->pipe->commands); e2 = list_next(e2))
+        for (e2 = list_begin(&current_job->pid_list); e2 != list_end(&current_job->pid_list); e2 = list_next(e2))
         {
             struct pid_mult *current_pid = list_entry(e2, struct pid_mult, mult_elem);
             // Check if the current process's pid matches the given pid
