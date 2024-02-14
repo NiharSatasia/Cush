@@ -418,7 +418,14 @@ int main(int ac, char *av[])
                 // Implementing built-in commands
                 if (strcmp(cmd->argv[0], "jobs") == 0)
                 {
-                    
+                    for (struct list_elem *e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
+                    {
+                        struct job *jobs = list_entry(e, struct job, elem);
+                        if (jobs->status != FOREGROUND)
+                        {
+                            print_job(jobs);
+                        }
+                    }
                 }
                 else if (strcmp(cmd->argv[0], "exit") == 0)
                 {
@@ -427,19 +434,55 @@ int main(int ac, char *av[])
                 }
                 else if (strcmp(cmd->argv[0], "fg") == 0)
                 {
-
+                    int jid = atoi(cmd->argv[1]);
+                    struct job *job = get_job_from_jid(jid);
+                    if (job)
+                    {
+                        // Give the terminal to the job
+                        termstate_give_terminal_to(&job->saved_tty_state, job->pgid);
+                        // Continue job if it was stopped (accounts for user ^Z)
+                        if (job->status == STOPPED)
+                        {
+                            killpg(job->pgid, SIGCONT);
+                        }
+                        // Set status to foreground
+                        job->status = FOREGROUND;
+                        wait_for_job(job);
+                        // Give the terminal back to the shell
+                        termstate_give_terminal_back_to_shell();
+                    }
                 }
                 else if (strcmp(cmd->argv[0], "bg") == 0)
                 {
-                    
+                    int jid = atoi(cmd->argv[1]);
+                    struct job *job = get_job_from_jid(jid);
+                     // Continue job if it was stopped (accounts for user ^Z)
+                    if (job && job->status == STOPPED)
+                    {
+                        killpg(job->pgid, SIGCONT);
+                        // Set status to background
+                        job->status = BACKGROUND;
+                    }
                 }
                 else if (strcmp(cmd->argv[0], "kill") == 0)
                 {
-                    
+                    int jid = atoi(cmd->argv[1]);
+                    struct job *job = get_job_from_jid(jid);
+                    if (job)
+                    {
+                        // Terminate job
+                        killpg(job->pgid, SIGTERM);
+                    }
                 }
                 else if (strcmp(cmd->argv[0], "stop") == 0)
                 {
-                   
+                    int jid = atoi(cmd->argv[1]);
+                    struct job *job = get_job_from_jid(jid);
+                    if (job)
+                    {
+                        // Stop job
+                        killpg(job->pgid, SIGSTOP);
+                    }
                 }
                 else
                 {
