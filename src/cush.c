@@ -488,7 +488,6 @@ int main(int ac, char *av[])
                 }
                 else
                 {
-                    
                     // Handling non built in functions
                     struct list_elem *e = list_begin(&pipeline->commands);
                     // Ensure there is at least one command
