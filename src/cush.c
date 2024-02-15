@@ -13,6 +13,7 @@
 #include <termios.h>
 #include <sys/wait.h>
 #include <assert.h>
+#include <fcntl.h>
 
 /* Since the handed out code contains a number of unused functions. */
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -487,17 +488,32 @@ int main(int ac, char *av[])
                 }
                 else
                 {
-                    // Handling single command, need to implement it for multiple commands
-                    struct list_elem *e = list_begin(&cline->pipes);
-                    struct ast_pipeline *pipe = list_entry(e, struct ast_pipeline, elem);
-                    e = list_begin(&pipe->commands);
+                    
+                    // Handling non built in functions
+                    struct list_elem *e = list_begin(&pipeline->commands);
                     // Ensure there is at least one command
-                    if (e != list_end(&pipe->commands))
+                    if (e != list_end(&pipeline->commands))
                     {
                         struct ast_command *cmd = list_entry(e, struct ast_command, elem);
                         pid_t pid;
                         printf("Executing command: %s\n", cmd->argv[0]);
-                        if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0)
+                        //check to see if input is coming from anywhere or output is going somewhere
+                        if (pipeline->iored_input || pipeline->iored_output) {
+                            posix_spawn_file_actions_t file;
+                            posix_spawn_file_actions_init(&file);
+                            if (pipeline->iored_input) {
+                                int fd = fopen(pipeline->iored_input, "r");
+                                posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
+                            }
+                            if (pipeline->iored_output) {
+                                fopen(pipeline->iored_output, "w");
+                                posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY, 0666);
+                            }
+                            posix_spawnp(&pid, cmd->argv[0], &file, NULL, cmd->argv, environ);
+                            int status;
+                            waitpid(pid, &status, 0);
+                        }
+                        else if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0)
                         {
                             perror("spawn failed");
                         }
@@ -509,12 +525,14 @@ int main(int ac, char *av[])
                             waitpid(pid, &status, 0);
                         }
                     }
+                    
+                   //implement other commands
                 }
             }
         }
 
-        ast_command_line_print(cline); /* Output a representation of
-                                          the entered command line */
+        //ast_command_line_print(cline); /* Output a representation of
+        //                                  the entered command line */
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
