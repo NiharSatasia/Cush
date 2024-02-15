@@ -297,12 +297,11 @@ handle_child_status(pid_t pid, int status)
         // ^Z
         if (WSTOPSIG(status) == SIGTSTP)
         {
-            fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
+            // fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
             // Save the terminal state because a process was stopped
             termstate_save(&job->saved_tty_state);
-            // print job that was stopped
-            print_job(job);
             job->status = STOPPED;
+            print_job(job);
         }
         if (WSTOPSIG(status) == SIGSTOP)
         {
@@ -384,11 +383,13 @@ int main(int ac, char *av[])
          * Make sure that you call termstate_give_terminal_back_to_shell()
          * before returning here on all paths.
          */
+        // termstate_give_terminal_back_to_shell();
         assert(termstate_get_current_terminal_owner() == getpgrp());
 
         /* Do not output a prompt unless shell's stdin is a terminal */
         char *prompt = isatty(0) ? build_prompt() : NULL;
         char *cmdline = readline(prompt);
+        // delete job do anywhere between here and where we spawn the processes (after ast_commandlineprint(cline))
         free(prompt);
 
         if (cmdline == NULL) /* User typed EOF */
@@ -405,11 +406,18 @@ int main(int ac, char *av[])
             continue;
         }
 
+        // ast_command_line_print(cline);      /* Output a representation of
+        // the entered command line */
+
+        signal_block(SIGCHLD);
+
         // Iterate over each pipeline
         struct list_elem *pipe_elem;
         for (pipe_elem = list_begin(&cline->pipes); pipe_elem != list_end(&cline->pipes); pipe_elem = list_next(pipe_elem))
         {
             struct ast_pipeline *pipeline = list_entry(pipe_elem, struct ast_pipeline, elem);
+            // Current job user types in
+            struct job *job = add_job(pipeline);
 
             // Iterate over each command in the pipeline
             struct list_elem *cmd_elem;
@@ -449,6 +457,9 @@ int main(int ac, char *av[])
                         }
                         // Set status to foreground
                         job->status = FOREGROUND;
+                        // Print out info to terminal (for tests)
+                        print_cmdline(job->pipe);
+                        printf("\n");
                         wait_for_job(job);
                         // Give the terminal back to the shell
                         termstate_give_terminal_back_to_shell();
@@ -458,7 +469,7 @@ int main(int ac, char *av[])
                 {
                     int jid = atoi(cmd->argv[1]);
                     struct job *job = get_job_from_jid(jid);
-                     // Continue job if it was stopped (accounts for user ^Z)
+                    // Continue job if it was stopped (accounts for user ^Z)
                     if (job && job->status == STOPPED)
                     {
                         killpg(job->pgid, SIGCONT);
@@ -493,44 +504,94 @@ int main(int ac, char *av[])
                     // Ensure there is at least one command
                     if (e != list_end(&pipeline->commands))
                     {
-                        struct ast_command *cmd = list_entry(e, struct ast_command, elem);
+                        // struct ast_command *cmd = list_entry(e, struct ast_command, elem);
+
                         pid_t pid;
+                        posix_spawn_file_actions_t file;
+                        posix_spawn_file_actions_init(&file);
                         printf("Executing command: %s\n", cmd->argv[0]);
-                        //check to see if input is coming from anywhere or output is going somewhere
-                        if (pipeline->iored_input || pipeline->iored_output) {
-                            posix_spawn_file_actions_t file;
-                            posix_spawn_file_actions_init(&file);
-                            if (pipeline->iored_input) {
+                        // check to see if input is coming from anywhere or output is going somewhere
+                        if (pipeline->iored_input || pipeline->iored_output)
+                        {
+                            if (pipeline->iored_input)
+                            {
                                 posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
                             }
-                            if (pipeline->iored_output) {
+                            if (pipeline->iored_output)
+                            {
                                 fopen(pipeline->iored_output, "w");
                                 posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY, 0666);
                             }
-                            posix_spawnp(&pid, cmd->argv[0], &file, NULL, cmd->argv, environ);
-                            int status;
-                            waitpid(pid, &status, 0);
+                            /*
+                              posix_spawnp(&pid, cmd->argv[0], &file, NULL, cmd->argv, environ);
+                              int status;
+                              waitpid(pid, &status, 0);
+                          }
+                          else if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0)
+                          {
+                              perror("spawn failed");
+                          }
+                          else
+                          {
+                              printf("Command executed successfully, PID: %d\n", pid);
+                              int status;
+                              // Wait for the command to finish
+                              waitpid(pid, &status, 0);
+                          }
+                          */
                         }
-                        else if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0)
+
+                        posix_spawnattr_t attr;
+                        posix_spawnattr_init(&attr);
+
+                        if (pipeline->bg_job)
+                        {
+                            job->status = BACKGROUND;
+                            posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_USEVFORK);
+                        }
+
+                        if (!pipeline->bg_job)
+                        {
+                            job->status = FOREGROUND;
+                            // Using 0x100 instead of 'POSIX_SPAWN_TCSETPGROUP' per forum post
+                            posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_USEVFORK | 0x100);
+                        }
+
+                        if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
                             perror("spawn failed");
+                            break;
                         }
-                        else
+
+                        // Initalize pid of job
+                        struct pid_mult *job_pid = malloc(sizeof(struct pid_mult));
+                        job_pid->pid2 = pid;
+
+                        // Add to end of pid list
+                        list_push_back(&job->pid_list, &job_pid->mult_elem);
+                        // Set pgid
+                        job->pgid = pid;
+
+                        // Increment process count
+                        job->num_processes_alive++;
+
+                        // Print out info if background job
+                        if (job->status == BACKGROUND)
                         {
-                            printf("Command executed successfully, PID: %d\n", pid);
-                            int status;
-                            // Wait for the command to finish
-                            waitpid(pid, &status, 0);
+                            printf("[%d] %d\n", job->jid, pid);
+                            termstate_save(&job->saved_tty_state);
                         }
                     }
-                    
-                   //implement other commands
                 }
             }
+            wait_for_job(job);
+            signal_unblock(SIGCHLD);
+            termstate_give_terminal_back_to_shell();
         }
 
         //ast_command_line_print(cline); /* Output a representation of
         //                                  the entered command line */
+
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
@@ -540,7 +601,7 @@ int main(int ac, char *av[])
          * manage the lifetime of the associated ast_pipelines.
          * Otherwise, freeing here will cause use-after-free errors.
          */
-        ast_command_line_free(cline);
+        free(cline);
     }
     return 0;
 }
