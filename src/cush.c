@@ -278,7 +278,7 @@ handle_child_status(pid_t pid, int status)
     struct job *job = get_job_from_pid(pid);
     if (WIFEXITED(status))
     {
-        fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+       // fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
         if (job->status == FOREGROUND)
         {
@@ -289,7 +289,7 @@ handle_child_status(pid_t pid, int status)
     // ^C
     else if (WIFSIGNALED(status))
     {
-        fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+        //fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
     }
     else if (WIFSTOPPED(status))
@@ -305,14 +305,14 @@ handle_child_status(pid_t pid, int status)
         }
         if (WSTOPSIG(status) == SIGSTOP)
         {
-            fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
+            // fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
             // Save the terminal state because a process was stopped
             termstate_save(&job->saved_tty_state);
             job->status = STOPPED;
         }
         if (WSTOPSIG(status) == SIGTTOU || WSTOPSIG(status) == SIGTTIN)
         {
-            fprintf(stderr, "Process %d needs terminal to continue (stopped by signal: %s)\n", pid, strsignal(WSTOPSIG(status)));
+            // fprintf(stderr, "Process %d needs terminal to continue (stopped by signal: %s)\n", pid, strsignal(WSTOPSIG(status)));
             job->status = NEEDSTERMINAL;
         }
     }
@@ -509,7 +509,7 @@ int main(int ac, char *av[])
                         pid_t pid;
                         posix_spawn_file_actions_t file;
                         posix_spawn_file_actions_init(&file);
-                        printf("Executing command: %s\n", cmd->argv[0]);
+                        // printf("Executing command: %s\n", cmd->argv[0]);
                         // check to see if input is coming from anywhere or output is going somewhere
                         if (pipeline->iored_input || pipeline->iored_output)
                         {
