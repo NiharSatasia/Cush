@@ -501,7 +501,6 @@ int main(int ac, char *av[])
                             posix_spawn_file_actions_t file;
                             posix_spawn_file_actions_init(&file);
                             if (pipeline->iored_input) {
-                                int fd = fopen(pipeline->iored_input, "r");
                                 posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
                             }
                             if (pipeline->iored_output) {
