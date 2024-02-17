@@ -106,14 +106,14 @@ add_job(struct ast_pipeline *pipe)
     job->pipe = pipe;
     job->num_processes_alive = 0;
     list_push_back(&job_list, &job->elem);
+    // Initalize job list
+    list_init(&job->pid_list);
     for (int i = 1; i < MAXJOBS; i++)
     {
         if (jid2job[i] == NULL)
         {
             jid2job[i] = job;
             job->jid = i;
-            // Initalize job list
-            list_init(&job->pid_list);
             return job;
         }
     }
@@ -410,9 +410,6 @@ int main(int ac, char *av[])
             continue;
         }
 
-        // ast_command_line_print(cline);      /* Output a representation of
-        // the entered command line */
-
         signal_block(SIGCHLD);
 
         // Iterate over each pipeline
@@ -564,23 +561,6 @@ int main(int ac, char *av[])
                                 fopen(pipeline->iored_output, "w");
                                 posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY, 0666);
                             }
-                            /*
-                              posix_spawnp(&pid, cmd->argv[0], &file, NULL, cmd->argv, environ);
-                              int status;
-                              waitpid(pid, &status, 0);
-                          }
-                          else if (posix_spawnp(&pid, cmd->argv[0], NULL, NULL, cmd->argv, environ) != 0)
-                          {
-                              perror("spawn failed");
-                          }
-                          else
-                          {
-                              printf("Command executed successfully, PID: %d\n", pid);
-                              int status;
-                              // Wait for the command to finish
-                              waitpid(pid, &status, 0);
-                          }
-                          */
                         }
 
                         posix_spawnattr_t attr;
@@ -602,26 +582,27 @@ int main(int ac, char *av[])
                         if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
                             perror("spawn failed");
-                            break;
                         }
-
-                        // Initalize pid of job
-                        struct pid_mult *job_pid = malloc(sizeof(struct pid_mult));
-                        job_pid->pid2 = pid;
-
-                        // Add to end of pid list
-                        list_push_back(&job->pid_list, &job_pid->mult_elem);
-                        // Set pgid
-                        job->pgid = pid;
-
-                        // Increment process count
-                        job->num_processes_alive++;
-
-                        // Print out info if background job
-                        if (job->status == BACKGROUND)
+                        else
                         {
-                            printf("[%d] %d\n", job->jid, pid);
-                            termstate_save(&job->saved_tty_state);
+                            // Initalize pid of job
+                            struct pid_mult *job_pid = malloc(sizeof(struct pid_mult));
+                            job_pid->pid2 = pid;
+
+                            // Add to end of pid list
+                            list_push_back(&job->pid_list, &job_pid->mult_elem);
+                            // Set pgid
+                            job->pgid = pid;
+
+                            // Increment process count
+                            job->num_processes_alive++;
+
+                            // Print out info if background job
+                            if (job->status == BACKGROUND)
+                            {
+                                printf("[%d] %d\n", job->jid, pid);
+                                termstate_save(&job->saved_tty_state);
+                            }
                         }
                     }
                 }
