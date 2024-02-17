@@ -23,6 +23,7 @@
 #include "shell-ast.h"
 #include "utils.h"
 #include <spawn.h>
+#include <readline/history.h>
 
 static void handle_child_status(pid_t pid, int status);
 static struct job *get_job_from_pid(pid_t pid);
@@ -395,6 +396,9 @@ int main(int ac, char *av[])
         if (cmdline == NULL) /* User typed EOF */
             break;
 
+        // Tracking history
+        add_history(cmdline);
+
         struct ast_command_line *cline = ast_parse_command_line(cmdline);
         free(cmdline);
         if (cline == NULL) /* Error in command line */
@@ -512,6 +516,27 @@ int main(int ac, char *av[])
                     else
                     {
                         chdir(getenv("HOME"));
+                    }
+                }
+                else if (strcmp(cmd->argv[0], "history") == 0)
+                {
+                    // Referenced https://linux.die.net/man/3/history
+
+                    // History list
+                    HIST_ENTRY **the_history_list = history_list();
+
+                    int i = 0;
+
+                    // Loop through list and print (entry number, command)
+                    while (the_history_list[i] != NULL)
+                    {
+                        // history_base is entry position stored in zero based index
+                        int entry = history_base + i;
+                        // 'line' contains the command string
+                        char *command = the_history_list[i]->line;
+
+                        printf("    %d %s\n", entry, command);
+                        i++;
                     }
                 }
                 else
