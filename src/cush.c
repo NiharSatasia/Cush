@@ -497,6 +497,19 @@ int main(int ac, char *av[])
                         killpg(job->pgid, SIGSTOP);
                     }
                 }
+                else if (strcmp(cmd->argv[0], "cd") == 0)
+                {
+                    // Change directory if user specifies
+                    if (cmd->argv[1] != NULL)
+                    {
+                        chdir(cmd->argv[1]);
+                    }
+                    // Go to home directory if user does not specify
+                    else
+                    {
+                        chdir(getenv("HOME"));
+                    }
+                }
                 else
                 {
                     // Handling non built in functions
