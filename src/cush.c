@@ -317,12 +317,6 @@ handle_child_status(pid_t pid, int status)
             job->status = NEEDSTERMINAL;
         }
     }
-
-    if (job->num_processes_alive == 0)
-    {
-        list_remove(&job->elem);
-        delete_job(job);
-    }
 }
 
 // Utility function to find job based on pid, updated to handle jobs with multiple processes
@@ -594,8 +588,13 @@ int main(int ac, char *av[])
                             // Set pgid
                             job->pgid = pid;
 
-                            // Increment process count
+                            // Update process count
                             job->num_processes_alive++;
+                            if (job->num_processes_alive == 0)
+                            {
+                                list_remove(&job->elem);
+                                delete_job(job);
+                            }
 
                             // Print out info if background job
                             if (job->status == BACKGROUND)
