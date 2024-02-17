@@ -502,7 +502,11 @@ int main(int ac, char *av[])
                     // Change directory if user specifies
                     if (cmd->argv[1] != NULL)
                     {
-                        chdir(cmd->argv[1]);
+                        // Error handling if user tries to go to a directory that does not exist
+                        if (chdir(cmd->argv[1]) != 0)
+                        {
+                            perror("cd failed");
+                        }
                     }
                     // Go to home directory if user does not specify
                     else
