@@ -278,7 +278,7 @@ handle_child_status(pid_t pid, int status)
     struct job *job = get_job_from_pid(pid);
     if (WIFEXITED(status))
     {
-       // fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+        // fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
         if (job->status == FOREGROUND)
         {
@@ -289,7 +289,7 @@ handle_child_status(pid_t pid, int status)
     // ^C
     else if (WIFSIGNALED(status))
     {
-        //fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+        fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
         job->num_processes_alive--;
     }
     else if (WIFSTOPPED(status))
@@ -509,7 +509,7 @@ int main(int ac, char *av[])
                         pid_t pid;
                         posix_spawn_file_actions_t file;
                         posix_spawn_file_actions_init(&file);
-                        // printf("Executing command: %s\n", cmd->argv[0]);
+                        printf("Executing command: %s\n", cmd->argv[0]);
                         // check to see if input is coming from anywhere or output is going somewhere
                         if (pipeline->iored_input || pipeline->iored_output)
                         {
@@ -589,9 +589,8 @@ int main(int ac, char *av[])
             termstate_give_terminal_back_to_shell();
         }
 
-        //ast_command_line_print(cline); /* Output a representation of
-        //                                  the entered command line */
-
+        // ast_command_line_print(cline); /* Output a representation of
+        //                                   the entered command line */
 
         /* Free the command line.
          * This will free the ast_pipeline objects still contained
