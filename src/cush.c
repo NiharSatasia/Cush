@@ -552,7 +552,12 @@ int main(int ac, char *av[])
                             }
                             if (pipeline->iored_output)
                             {
-                                fopen(pipeline->iored_output, "w");
+                                if (pipeline->append_to_output) {
+                                    open(pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                                }
+                                else {
+                                    open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+                                }
                                 posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY, 0666);
                             }
                         }
@@ -572,6 +577,18 @@ int main(int ac, char *av[])
                             // Using 0x100 instead of 'POSIX_SPAWN_TCSETPGROUP' per forum post
                             posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_USEVFORK | 0x100);
                         }
+
+                        //wire up pipe -- currently wrong
+                        //if not last, wire up pipe output
+                        //int fds[2];
+                        //pipe2(fds, O_CLOEXEC);
+                        //if (list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            //posix_spawn_file_actions_adddup2(&file, fds[0], STDOUT_FILENO);
+                        //}
+                        //if not first wire up pipe input
+                        //if (cmd_elem != list_begin(&pipeline->commands)) {
+                            //posix_spawn_file_actions_adddup2(&file, fds[1], STDIN_FILENO);
+                        //}
 
                         if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
