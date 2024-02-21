@@ -303,7 +303,6 @@ handle_child_status(pid_t pid, int status)
             termstate_save(&job->saved_tty_state);
             job->status = STOPPED;
             print_job(job);
-            
         }
         if (WSTOPSIG(status) == SIGSTOP)
         {
@@ -615,35 +614,37 @@ int main(int ac, char *av[])
                             posix_spawn_file_actions_adddup2(&file, fds[1], STDIN_FILENO);
                         }
 
-
                         if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
                             perror("spawn failed");
                         }
                         else
                         {
-                            // Initalize pid of job
-                            struct pid_mult *job_pid = malloc(sizeof(struct pid_mult));
-                            job_pid->pid2 = pid;
-
-                            // Add to end of pid list
-                            list_push_back(&job->pid_list, &job_pid->mult_elem);
-                            // Set pgid
-                            job->pgid = pid;
-
-                            // Update process count
-                            job->num_processes_alive++;
-                            if (job->num_processes_alive == 0)
+                            if (job)
                             {
-                                list_remove(&job->elem);
-                                delete_job(job);
+                                // Initalize pid of job
+                                struct pid_mult *job_pid = malloc(sizeof(struct pid_mult));
+                                job_pid->pid2 = pid;
+                                // Add to end of pid list
+                                list_push_back(&job->pid_list, &job_pid->mult_elem);
+                                // Set pgid
+                                job->pgid = pid;
+                                // Update process count
+                                job->num_processes_alive++;
+                                // Print out info if background job
+                                if (job->status == BACKGROUND)
+                                {
+                                    printf("[%d] %d\n", job->jid, pid);
+                                    termstate_save(&job->saved_tty_state);
+                                }
                             }
-
-                            // Print out info if background job
-                            if (job->status == BACKGROUND)
+                            else 
                             {
-                                printf("[%d] %d\n", job->jid, pid);
-                                termstate_save(&job->saved_tty_state);
+                                if (job->num_processes_alive == 0)
+                                {
+                                    list_remove(e);
+                                    delete_job(job);
+                                }
                             }
                         }
                     }
