@@ -352,11 +352,8 @@ static void update_directory(const char *new_dir)
 {
     // Allocate memory new directory
     char *temp_dir = malloc(PATH_MAX);
-    // Error handling if user tries to go to a directory that does not exist
-    if(chdir(new_dir) != 0)
-    {
-        perror("cd failed");
-    }
+    // Change directory
+    chdir(new_dir);
     // Store current directory in temp_dir
     getcwd(temp_dir, PATH_MAX);
     // Update pointers
@@ -542,6 +539,7 @@ int main(int ac, char *av[])
                             if (prev_dir)
                             {
                                 update_directory(prev_dir);
+                                printf("%s\n", current_dir);
                             }
                         }
                         update_directory(cmd->argv[1]);
