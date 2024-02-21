@@ -24,6 +24,7 @@
 #include "utils.h"
 #include <spawn.h>
 #include <readline/history.h>
+#include <limits.h>
 
 static void handle_child_status(pid_t pid, int status);
 static struct job *get_job_from_pid(pid_t pid);
@@ -344,6 +345,25 @@ static struct job *get_job_from_pid(pid_t pid)
     return NULL;
 }
 
+// Utility function to update the directory using 'cd' built-in especially for 'cd -'
+char *prev_dir = NULL;
+char *current_dir = NULL;
+static void update_directory(const char *new_dir)
+{
+    // Allocate memory new directory
+    char *temp_dir = malloc(PATH_MAX);
+    // Error handling if user tries to go to a directory that does not exist
+    if(chdir(new_dir) != 0)
+    {
+        perror("cd failed");
+    }
+    // Store current directory in temp_dir
+    getcwd(temp_dir, PATH_MAX);
+    // Update pointers
+    prev_dir = current_dir;
+    current_dir = temp_dir;
+}
+
 int main(int ac, char *av[])
 {
     int opt;
@@ -514,19 +534,22 @@ int main(int ac, char *av[])
                 }
                 else if (strcmp(cmd->argv[0], "cd") == 0)
                 {
-                    // Change directory if user specifies
                     if (cmd->argv[1] != NULL)
                     {
-                        // Error handling if user tries to go to a directory that does not exist
-                        if (chdir(cmd->argv[1]) != 0)
+                        if (strcmp(cmd->argv[1], "-") == 0)
                         {
-                            perror("cd failed");
+                            // Calling utility function for 'cd -' case
+                            if (prev_dir)
+                            {
+                                update_directory(prev_dir);
+                            }
                         }
+                        update_directory(cmd->argv[1]);
                     }
-                    // Go to home directory if user does not specify
                     else
                     {
-                        chdir(getenv("HOME"));
+                        // Go to home directory if user does not specify
+                        update_directory(getenv("HOME"));
                     }
                 }
                 else if (strcmp(cmd->argv[0], "history") == 0)
