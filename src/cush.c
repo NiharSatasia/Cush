@@ -638,13 +638,10 @@ int main(int ac, char *av[])
                                     termstate_save(&job->saved_tty_state);
                                 }
                             }
-                            else 
+                            else if (job->num_processes_alive == 0)
                             {
-                                if (job->num_processes_alive == 0)
-                                {
-                                    list_remove(e);
-                                    delete_job(job);
-                                }
+                                list_remove(e);
+                                delete_job(job);
                             }
                         }
                     }
