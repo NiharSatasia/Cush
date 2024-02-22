@@ -601,8 +601,11 @@ int main(int ac, char *av[])
                                     // open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
                                     posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
                                 }
-                                posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY, 0666);
                             }
+                        }
+
+                        if (cmd->dup_stderr_to_stdout) {
+                            posix_spawn_file_actions_adddup2(&file, STDOUT_FILENO, STDERR_FILENO);
                         }
 
                         posix_spawnattr_t attr;
@@ -622,18 +625,19 @@ int main(int ac, char *av[])
                         }
 
                         // wire up pipe -- currently wrong
-                        // if not last, wire up pipe output
-                        int fds[2];
-                        pipe2(fds, O_CLOEXEC);
-                        if (list_next(cmd_elem) != list_end(&pipeline->commands))
-                        {
-                            posix_spawn_file_actions_adddup2(&file, fds[0], STDOUT_FILENO);
-                        }
-                        // if not first wire up pipe input
-                        if (cmd_elem != list_begin(&pipeline->commands))
-                        {
-                            posix_spawn_file_actions_adddup2(&file, fds[1], STDIN_FILENO);
-                        }
+                        // int fds[2];
+                        // pipe2(fds, O_CLOEXEC);
+                        // if (cmd_elem == list_begin(&pipeline->commands)) {
+                        //     posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                        // }
+                        // else if (list_next(cmd_elem) == list_end(&pipeline->commands)) {
+                        //     posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                        // }
+                        // else {
+                        //     posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                        //     posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                        // }
+                        
 
                         if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
