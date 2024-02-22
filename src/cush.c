@@ -433,6 +433,9 @@ int main(int ac, char *av[])
             struct ast_pipeline *pipeline = list_entry(pipe_elem, struct ast_pipeline, elem);
             // Current job user types in
             struct job *job = add_job(pipeline);
+            
+            int fds[2];
+            bool piped = false;
 
             // Iterate over each command in the pipeline
             struct list_elem *cmd_elem;
@@ -579,6 +582,28 @@ int main(int ac, char *av[])
                         pid_t pid;
                         posix_spawn_file_actions_t file;
                         posix_spawn_file_actions_init(&file);
+
+                        //first go through
+                        if (cmd_elem == list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            piped = true;
+                            pipe2(fds, O_CLOEXEC);
+                            posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[1]);
+                        }
+                        //middle stages
+                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[0]);
+                            pipe2(fds, O_CLOEXEC);
+                            posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[1]);
+                        }
+                        //last go through where it is a pipe
+                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
+                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[0]);
+                        }
+
                         printf("Executing command: %s\n", cmd->argv[0]);
                         // check to see if input is coming from anywhere or output is going somewhere
                         if (pipeline->iored_input || pipeline->iored_output)
@@ -623,22 +648,7 @@ int main(int ac, char *av[])
                             // Using 0x100 instead of 'POSIX_SPAWN_TCSETPGROUP' per forum post
                             posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_USEVFORK | 0x100);
                         }
-
-                        // wire up pipe -- currently wrong
-                        // int fds[2];
-                        // pipe2(fds, O_CLOEXEC);
-                        // if (cmd_elem == list_begin(&pipeline->commands)) {
-                        //     posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
-                        // }
-                        // else if (list_next(cmd_elem) == list_end(&pipeline->commands)) {
-                        //     posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                        // }
-                        // else {
-                        //     posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
-                        //     posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                        // }
                         
-
                         if (posix_spawnp(&pid, cmd->argv[0], &file, &attr, cmd->argv, environ) != 0)
                         {
                             perror("spawn failed");
@@ -671,6 +681,10 @@ int main(int ac, char *av[])
                         }
                     }
                 }
+            }
+            if (piped) {
+                //close(fds[0]);
+                close(fds[1]);
             }
             wait_for_job(job);
             signal_unblock(SIGCHLD);
