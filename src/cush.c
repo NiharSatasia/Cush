@@ -54,6 +54,7 @@ enum job_status
     STOPPED,       /* job is stopped via SIGSTOP */
     NEEDSTERMINAL, /* job is stopped because it was a background job
                       and requires exclusive terminal access */
+    DEAD           /* job is dead */
 };
 
 struct job
@@ -149,6 +150,8 @@ get_status(enum job_status status)
         return "Running";
     case STOPPED:
         return "Stopped";
+    case DEAD:
+        return "dead";
     case NEEDSTERMINAL:
         return "Stopped (tty)";
     default:
@@ -276,8 +279,10 @@ handle_child_status(pid_t pid, int status)
      *         If a process was stopped, save the terminal state.
      */
 
-    // Updated to save terminal states when needed
+        // Updated to save terminal states when needed
+
     struct job *job = get_job_from_pid(pid);
+    // Process exists via exit()
     if (WIFEXITED(status))
     {
         // fprintf(stderr, "\nProcess %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
@@ -286,17 +291,31 @@ handle_child_status(pid_t pid, int status)
         {
             // Sample the current terminal state because a foreground process exited
             termstate_sample();
+            termstate_give_terminal_back_to_shell();
         }
+       // job->status = DEAD;
     }
-    // ^C
+    // User terminates process with ^C, kill, kill -9, general case
     else if (WIFSIGNALED(status))
     {
-        fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
-        job->num_processes_alive--;
+        // ^C
+        if (WTERMSIG(status) == SIGINT)
+        {
+            // fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+            job->num_processes_alive--;
+            job->status = DEAD;
+        }
+        // User terminates process with kill (SIGTERM), kill -9 (SIGKILL), or general case (signal number)
+        else
+        {
+            fprintf(stderr, "Process %d terminated by signal: %s\n", pid, strsignal(WTERMSIG(status)));
+            job->num_processes_alive--;
+            job->status = DEAD;
+        }
     }
     else if (WIFSTOPPED(status))
     {
-        // ^Z
+        // User stops fg process with ^Z
         if (WSTOPSIG(status) == SIGTSTP)
         {
             // fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
@@ -304,18 +323,25 @@ handle_child_status(pid_t pid, int status)
             termstate_save(&job->saved_tty_state);
             job->status = STOPPED;
             print_job(job);
+            termstate_give_terminal_back_to_shell();
         }
+        // User stops process with kill -STOP
         if (WSTOPSIG(status) == SIGSTOP)
         {
             // fprintf(stderr, "Process %d stopped by signal: %s\n", pid, strsignal(WSTOPSIG(status)));
             // Save the terminal state because a process was stopped
             termstate_save(&job->saved_tty_state);
             job->status = STOPPED;
+            termstate_give_terminal_back_to_shell();
         }
+        // Non-foreground process wants terminal access
         if (WSTOPSIG(status) == SIGTTOU || WSTOPSIG(status) == SIGTTIN)
         {
             // fprintf(stderr, "Process %d needs terminal to continue (stopped by signal: %s)\n", pid, strsignal(WSTOPSIG(status)));
-            job->status = NEEDSTERMINAL;
+            if (job->status != FOREGROUND)
+            {
+                job->status = NEEDSTERMINAL;
+            }
         }
     }
 }
@@ -343,6 +369,25 @@ static struct job *get_job_from_pid(pid_t pid)
     }
     // Return NULL if no jobs matches pid
     return NULL;
+}
+
+// Utility function to delete completed jobs from the job list
+static void delete_completed_jobs()
+{
+    struct list_elem *current_job_elem;
+    struct list_elem *next_job_elem;
+    for (current_job_elem = list_begin(&job_list); current_job_elem != list_end(&job_list); current_job_elem = next_job_elem)
+    {
+        struct job *job = list_entry(current_job_elem, struct job, elem);
+        // Set next job
+        next_job_elem = list_next(current_job_elem);
+        // Delete job when needed
+        if (job->num_processes_alive == 0)
+        {
+            list_remove(current_job_elem);
+            delete_job(job);
+        }
+    }
 }
 
 // Utility function to update the directory using 'cd' built-in especially for 'cd -'
@@ -404,7 +449,10 @@ int main(int ac, char *av[])
         /* Do not output a prompt unless shell's stdin is a terminal */
         char *prompt = isatty(0) ? build_prompt() : NULL;
         char *cmdline = readline(prompt);
+
         // delete job do anywhere between here and where we spawn the processes (after ast_commandlineprint(cline))
+        delete_completed_jobs();
+
         free(prompt);
 
         if (cmdline == NULL) /* User typed EOF */
@@ -473,7 +521,7 @@ int main(int ac, char *av[])
                             // Give the terminal to the job
                             termstate_give_terminal_to(&job->saved_tty_state, job->pgid);
                             // Continue job if it was stopped (accounts for user ^Z)
-                            if (job->status == STOPPED)
+                            if (job->status != FOREGROUND)
                             {
                                 killpg(job->pgid, SIGCONT);
                             }
@@ -481,7 +529,7 @@ int main(int ac, char *av[])
                             job->status = FOREGROUND;
                             // Print out info to terminal (for tests)
                             print_cmdline(job->pipe);
-                            printf("\n");
+                            printf(")\n");
                             wait_for_job(job);
                             // Give the terminal back to the shell
                             termstate_give_terminal_back_to_shell();
@@ -496,7 +544,7 @@ int main(int ac, char *av[])
                     {
                         struct job *job = get_job_from_jid(jid);
                         // Continue job if it was stopped (accounts for user ^Z)
-                        if (job && job->status == STOPPED)
+                        if (job && job->status != BACKGROUND)
                         {
                             killpg(job->pgid, SIGCONT);
                             // Set status to background
@@ -673,10 +721,9 @@ int main(int ac, char *av[])
                                     termstate_save(&job->saved_tty_state);
                                 }
                             }
-                            else if (job->num_processes_alive == 0)
+                            else 
                             {
-                                list_remove(e);
-                                delete_job(job);
+                                delete_completed_jobs();
                             }
                         }
                     }
