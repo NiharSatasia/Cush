@@ -632,26 +632,39 @@ int main(int ac, char *av[])
                         posix_spawn_file_actions_init(&file);
 
                         // check to see if input is coming from anywhere or output is going somewhere
-                        if (pipeline->iored_input || pipeline->iored_output)
-                        {
-                            // posix_spawn_file_actions_t file;
-                            // posix_spawn_file_actions_init(&file);
-                            if (pipeline->iored_input)
+                        // if (pipeline->iored_input || pipeline->iored_output)
+                        // {
+                        //     if (pipeline->iored_input)
+                        //     {
+                        //         posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
+                        //     }
+                        //     if (pipeline->iored_output)
+                        //     {
+                        //         if (pipeline->append_to_output)
+                        //         {
+                        //             // open(pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                        //             posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                        //         }
+                        //         else
+                        //         {
+                        //             // open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+                        //             posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+                        //         }
+                        //     }
+                        // }
+                        if (cmd_elem == list_begin(&pipeline->commands) && pipeline->iored_input) {
+                            posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
+                        }
+                        if (list_next(cmd_elem) == list_end(&pipeline->commands) && pipeline->iored_output) {
+                            if (pipeline->append_to_output)
                             {
-                                posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
+                                // open(pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                                posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
                             }
-                            if (pipeline->iored_output)
+                            else
                             {
-                                if (pipeline->append_to_output)
-                                {
-                                    // open(pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
-                                    posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
-                                }
-                                else
-                                {
-                                    // open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
-                                    posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
-                                }
+                                // open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+                                posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
                             }
                         }
 
@@ -660,7 +673,6 @@ int main(int ac, char *av[])
                             piped = true;
                             pipe2(fds, O_CLOEXEC);
                             posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[1]);
                         }
                         //middle stages
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
@@ -674,7 +686,6 @@ int main(int ac, char *av[])
                         //last go through where it is a pipe
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
                             posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[0]);
                         }
 
                         // printf("Executing command: %s\n", cmd->argv[0]);
@@ -739,8 +750,8 @@ int main(int ac, char *av[])
                 }
             }
             if (piped) {
-                //close(fds[0]);
                 close(fds[1]);
+                close(fds[0]);
             }
             wait_for_job(job);
             signal_unblock(SIGCHLD);
