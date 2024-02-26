@@ -443,7 +443,6 @@ int main(int ac, char *av[])
          * Make sure that you call termstate_give_terminal_back_to_shell()
          * before returning here on all paths.
          */
-        // termstate_give_terminal_back_to_shell();
         assert(termstate_get_current_terminal_owner() == getpgrp());
 
         /* Do not output a prompt unless shell's stdin is a terminal */
@@ -495,6 +494,7 @@ int main(int ac, char *av[])
                 // Implementing built-in commands
                 if (strcmp(cmd->argv[0], "jobs") == 0)
                 {
+                    // Iterate through entire job list and print if not in foreground
                     for (struct list_elem *e = list_begin(&job_list); e != list_end(&job_list); e = list_next(e))
                     {
                         struct job *jobs = list_entry(e, struct job, elem);
@@ -654,7 +654,8 @@ int main(int ac, char *av[])
                             posix_spawn_file_actions_addclose(&file, fds[0]);
                         }
 
-                        printf("Executing command: %s\n", cmd->argv[0]);
+                        // printf("Executing command: %s\n", cmd->argv[0]);
+                        
                         // check to see if input is coming from anywhere or output is going somewhere
                         if (pipeline->iored_input || pipeline->iored_output)
                         {
@@ -713,7 +714,14 @@ int main(int ac, char *av[])
                                 // Add to end of pid list
                                 list_push_back(&job->pid_list, &job_pid->mult_elem);
                                 // Set pgid
-                                job->pgid = pid;
+                                if(job->num_processes_alive == 0)
+                                {
+                                    job->pgid = pid;
+                                }
+                                else
+                                {
+                                    setpgid(pid, job->pgid);
+                                }
                                 // Update process count
                                 job->num_processes_alive++;
                                 // Print out info if background job

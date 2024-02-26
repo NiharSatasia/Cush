@@ -63,7 +63,11 @@ append_to_output is true and if it is then we use posix_spawn_file_actions_addop
 along with the append flag. If it is not true then we use posix_spawn_file_actions_addopen() to open it and give it write only along
 with the create and truncate flag.
 
-Pipes: 
+Pipes: We implemented our pipes using pipe2(), posix_spawn_file_actions_adddup2(), and posix_spawn_file_actions_addclose. 
+The process starts by redirecting the first command to write to the pipe using STDOUT_FILENO, then the middle commands to read
+from one pipe and write to another using STDIN_FILENO and STDOUT_FILENO, and finally the last command to read from the pipe using
+STDIN_FILENO. Posix spawn executes the commands and duplicates the correct file descriptors to the input/output as needed. Finally,
+we made sure to close the pipes after we were done using them.
 
 Exclusive Access: To ensure exlusive access, we made sure to use termstate religiously. specifically we used termstate_save(), 
 termstate_sample(), and termstate_give_terminal_back_to_shell(). We used termstate_save() to save the terminal state when a
