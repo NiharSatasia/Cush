@@ -471,12 +471,11 @@ int main(int ac, char *av[])
             continue;
         }
 
-        signal_block(SIGCHLD);
-
         // Iterate over each pipeline
         struct list_elem *pipe_elem;
         for (pipe_elem = list_begin(&cline->pipes); pipe_elem != list_end(&cline->pipes); pipe_elem = list_next(pipe_elem))
         {
+            signal_block(SIGCHLD);
             struct ast_pipeline *pipeline = list_entry(pipe_elem, struct ast_pipeline, elem);
             // Current job user types in
             struct job *job = add_job(pipeline);
@@ -632,30 +631,6 @@ int main(int ac, char *av[])
                         posix_spawn_file_actions_t file;
                         posix_spawn_file_actions_init(&file);
 
-                        //first go through
-                        if (cmd_elem == list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
-                            piped = true;
-                            pipe2(fds, O_CLOEXEC);
-                            posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[1]);
-                        }
-                        //middle stages
-                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
-                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                            pipe2(fds2, O_CLOEXEC);
-                            posix_spawn_file_actions_adddup2(&file, fds2[1], STDOUT_FILENO);
-                            close(fds[1]);
-                            fds[1] = fds2[1];
-                            fds[0] = fds2[0];
-                        }
-                        //last go through where it is a pipe
-                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
-                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[0]);
-                        }
-
-                        // printf("Executing command: %s\n", cmd->argv[0]);
-                        
                         // check to see if input is coming from anywhere or output is going somewhere
                         if (pipeline->iored_input || pipeline->iored_output)
                         {
@@ -679,6 +654,30 @@ int main(int ac, char *av[])
                                 }
                             }
                         }
+
+                        //first go through
+                        if (cmd_elem == list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            piped = true;
+                            pipe2(fds, O_CLOEXEC);
+                            posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[1]);
+                        }
+                        //middle stages
+                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                            pipe2(fds2, O_CLOEXEC);
+                            posix_spawn_file_actions_adddup2(&file, fds2[1], STDOUT_FILENO);
+                            close(fds[1]);
+                            fds[1] = fds2[1];
+                            fds[0] = fds2[0];
+                        }
+                        //last go through where it is a pipe
+                        else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
+                            posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                            posix_spawn_file_actions_addclose(&file, fds[0]);
+                        }
+
+                        // printf("Executing command: %s\n", cmd->argv[0]);
 
                         if (cmd->dup_stderr_to_stdout) {
                             posix_spawn_file_actions_adddup2(&file, STDOUT_FILENO, STDERR_FILENO);
