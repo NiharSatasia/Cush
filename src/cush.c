@@ -483,6 +483,7 @@ int main(int ac, char *av[])
             struct job *job = add_job(pipeline);
             
             int fds[2];
+            int fds2[2];
             bool piped = false;
 
             // Iterate over each command in the pipeline
@@ -641,10 +642,11 @@ int main(int ac, char *av[])
                         //middle stages
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
                             posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[0]);
-                            pipe2(fds, O_CLOEXEC);
-                            posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
-                            posix_spawn_file_actions_addclose(&file, fds[1]);
+                            pipe2(fds2, O_CLOEXEC);
+                            posix_spawn_file_actions_adddup2(&file, fds2[1], STDOUT_FILENO);
+                            close(fds[1]);
+                            fds[1] = fds2[1];
+                            fds[0] = fds2[0];
                         }
                         //last go through where it is a pipe
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
