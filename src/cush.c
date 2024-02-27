@@ -482,6 +482,8 @@ int main(int ac, char *av[])
             
             int fds[2];
             int fds2[2];
+            int close0 = -1;
+            int close1 = -1;
             bool piped = false;
 
             // Iterate over each command in the pipeline
@@ -631,30 +633,11 @@ int main(int ac, char *av[])
                         posix_spawn_file_actions_t file;
                         posix_spawn_file_actions_init(&file);
 
-                        // check to see if input is coming from anywhere or output is going somewhere
-                        // if (pipeline->iored_input || pipeline->iored_output)
-                        // {
-                        //     if (pipeline->iored_input)
-                        //     {
-                        //         posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
-                        //     }
-                        //     if (pipeline->iored_output)
-                        //     {
-                        //         if (pipeline->append_to_output)
-                        //         {
-                        //             // open(pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
-                        //             posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_APPEND | O_CREAT, 0644);
-                        //         }
-                        //         else
-                        //         {
-                        //             // open(pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
-                        //             posix_spawn_file_actions_addopen(&file, STDOUT_FILENO, pipeline->iored_output, O_WRONLY | O_TRUNC | O_CREAT, 0644);
-                        //         }
-                        //     }
-                        // }
+                        //check on first pipe command if its reading from an input file
                         if (cmd_elem == list_begin(&pipeline->commands) && pipeline->iored_input) {
                             posix_spawn_file_actions_addopen(&file, STDIN_FILENO, pipeline->iored_input, O_RDONLY, 0666);
                         }
+                        //check on last pipe command if output should be written or appended to an output file
                         if (list_next(cmd_elem) == list_end(&pipeline->commands) && pipeline->iored_output) {
                             if (pipeline->append_to_output)
                             {
@@ -673,18 +656,29 @@ int main(int ac, char *av[])
                             piped = true;
                             pipe2(fds, O_CLOEXEC);
                             posix_spawn_file_actions_adddup2(&file, fds[1], STDOUT_FILENO);
+                            close1 = fds[1];
                         }
                         //middle stages
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) != list_end(&pipeline->commands)) {
+                            close(close1);
+                            if (close0 != -1) {
+                                close(close0);
+                            }
                             posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
+                            close0 = fds[0];
                             pipe2(fds2, O_CLOEXEC);
                             posix_spawn_file_actions_adddup2(&file, fds2[1], STDOUT_FILENO);
-                            close(fds[1]);
+                            close1 = fds2[1];
+                            //close(fds[1]);
                             fds[1] = fds2[1];
                             fds[0] = fds2[0];
                         }
                         //last go through where it is a pipe
                         else if (cmd_elem != list_begin(&pipeline->commands) && list_next(cmd_elem) == list_end(&pipeline->commands)) {
+                            close(close1);
+                            if (close0 !=  -1) {
+                                close(close0);
+                            }
                             posix_spawn_file_actions_adddup2(&file, fds[0], STDIN_FILENO);
                         }
 
